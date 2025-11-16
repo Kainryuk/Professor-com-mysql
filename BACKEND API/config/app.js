@@ -3,15 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
-const logger = require('./utils/logger');
-const sequelize = require('./utils/database');
+const logger = require('../utils/logger');
+const sequelize = require('../utils/database');
 
 // === Rotas ===
-const authRoutes = require('./routes/authRoutes');
-const questionRoutes = require('./routes/questionRoutes');
-const relationshipRoutes = require('./routes/relationshipRoutes');
-const commentRoutes = require('./routes/commentRoutes');
-const chatRoutes = require('./routes/chatRoutes');
+const authRoutes = require('../routes/authRoutes');
+const questionRoutes = require('../routes/questionRoutes');
+const relationshipRoutes = require('../routes/relationshipRoutes');
+const commentRoutes = require('../routes/commentRoutes');
+const chatRoutes = require('../routes/chatRoutes');
 
 // Carregar variáveis de ambiente
 dotenv.config({ path: path.resolve(__dirname, '.env') });
