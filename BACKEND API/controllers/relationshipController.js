@@ -1,160 +1,192 @@
+const { Op } = require('sequelize');
+const TeacherCode = require('../models/TeacherCode');
+const TeacherStudent = require('../models/TeacherStudent');
+const User = require('../models/User');
 const logger = require('../utils/logger');
-const { isProfessor } = require('../models/userModel'); // Ajuste se precisar de mais
-const { createTeacherCode, getTeacherCode, useTeacherCode } = require('../models/teacherCodeModel');
-const { createTeacherStudent, getTeacherStudents, getStudentRelations, deleteTeacherStudent } = require('../models/teacherStudentModel');
-const User = require('../models/User'); // Para buscar dados de users
 
-const isValidId = (id, paramName) => {
-  if (!id || id === 'undefined' || typeof id !== 'string' || id.trim().length === 0) {
-    logger.warn(`ID inválido para ${paramName}: ${id}`);
-    return false;
+// Função auxiliar para gerar um código aleatório
+const generateRandomCode = (length = 6) => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
   }
-  return true;
-};
-
-const getStudentsHandler = async (req, res) => {
-  try {
-    console.log('👥 [relationshipController] Buscando dados dos alunos por ID...');
-    
-    const userId = req.userId; // Do middleware
-    console.log(`🔍 [relationshipController] Usuário autenticado (ID): ${userId}`);
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      console.log(`❌ [relationshipController] Usuário não encontrado: ${userId}`);
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-    
-    if (user.userType !== 'professor') {
-      console.log(`❌ [relationshipController] Usuário ${userId} não é professor`);
-      return res.status(403).json({ error: 'Apenas professores podem acessar dados dos alunos' });
-    }
-
-    // Buscar relações
-    const relations = await TeacherStudent.find({ teacher_id: userId });
-    console.log(`📊 [relationshipController] ${relations.length} relações encontradas`);
-    
-    const students = [];
-    for (const relation of relations) {
-      const studentId = relation.student_id;
-      try {
-        const student = await User.findById(studentId);
-        if (student) {
-          students.push({
-            id: student._id.toString(),
-            nomeCompleto: student.nomeCompleto,
-            email: student.email,
-            userType: student.userType,
-            score: student.score || 0,
-            rank: student.rank || 'Iniciante',
-            cpf: student.cpf,
-            dataNascimento: student.dataNascimento,
-            // Dados da relação
-            relationId: relation._id.toString(),
-            joined_at: relation.joined_at ? relation.joined_at.toISOString() : null,
-            student_name: relation.student_name,
-            teacher_name: relation.teacher_name
-          });
-        } else {
-          console.warn(`⚠️ [relationshipController] Aluno não encontrado: ${studentId}`);
-        }
-      } catch (error) {
-        console.warn(`⚠️ [relationshipController] Erro ao buscar aluno ${studentId}: ${error.message}`);
-      }
-    }
-
-    console.log(`✅ [relationshipController] ${students.length} alunos retornados`);
-    res.status(200).json(students);
-  } catch (error) {
-    logger.error(`Erro ao buscar alunos: ${error.message}`, 'RELATIONSHIPS');
-    res.status(500).json({ error: error.message });
-  }
+  return result;
 };
 
 const generateTeacherCode = async (req, res) => {
-  // ... (o resto igual, usando models migrados)
-  // Exemplo: use createTeacherCode(userId, code)
+  const teacherId = req.userId;
+
+  try {
+    const user = await User.findByPk(teacherId);
+    if (user.userType !== 'professor') {
+      return res.status(403).json({ error: 'Apenas professores podem gerar códigos.' });
+    }
+
+    const newCode = generateRandomCode();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // Expira em 24 horas
+
+    // Cria ou atualiza o código do professor
+    const [teacherCode, created] = await TeacherCode.findOrCreate({
+      where: { teacherId },
+      defaults: { code: newCode, expiresAt },
+    });
+
+    if (!created) {
+      teacherCode.code = newCode;
+      teacherCode.expiresAt = expiresAt;
+      await teacherCode.save();
+    }
+
+    logger.info(`Código gerado para o professor ${teacherId}: ${newCode}`);
+    res.status(201).json({ code: newCode, expiresAt });
+  } catch (error) {
+    logger.error(`Erro ao gerar código de professor: ${error.message}`);
+    res.status(500).json({ error: 'Erro interno ao gerar código.' });
+  }
 };
 
 const getTeacherCodeHandler = async (req, res) => {
-  // ... igual, usando getTeacherCode
+  const teacherId = req.userId;
+
+  try {
+    const teacherCode = await TeacherCode.findOne({
+      where: {
+        teacherId,
+        expiresAt: { [Op.gt]: new Date() }, // Apenas códigos válidos
+      },
+    });
+
+    if (!teacherCode) {
+      return res.status(404).json({ error: 'Nenhum código ativo encontrado.' });
+    }
+
+    res.status(200).json(teacherCode);
+  } catch (error) {
+    logger.error(`Erro ao buscar código de professor: ${error.message}`);
+    res.status(500).json({ error: 'Erro ao buscar código.' });
+  }
 };
 
 const linkStudentByCode = async (req, res) => {
-  // ... igual, usando useTeacherCode e createTeacherStudent
-};
+  const studentId = req.userId;
+  const { code } = req.body;
 
-const getTeacherStudentsHandler = async (req, res) => {
+  if (!code) {
+    return res.status(400).json({ error: 'O código é obrigatório.' });
+  }
+
   try {
-    const userId = req.userId;
-    console.log(`🔍 [relationshipController] Buscando alunos para teacherId: ${userId}`);
-    
-    if (!await isProfessor(userId)) {
-      return res.status(403).json({ error: 'Only teachers can access student data' });
+    const student = await User.findByPk(studentId);
+    if (student.userType !== 'aluno') {
+      return res.status(403).json({ error: 'Apenas alunos podem se vincular a professores.' });
     }
 
-    const relations = await getTeacherStudents(userId);
-    res.status(200).json(relations || []);
+    const teacherCode = await TeacherCode.findOne({
+      where: {
+        code,
+        expiresAt: { [Op.gt]: new Date() },
+      },
+      include: 'teacher',
+    });
+
+    if (!teacherCode) {
+      return res.status(404).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    const teacherId = teacherCode.teacherId;
+
+    // Verifica se o vínculo já existe
+    const existingLink = await TeacherStudent.findOne({
+      where: { teacherId, studentId },
+    });
+
+    if (existingLink) {
+      return res.status(409).json({ error: 'Aluno já vinculado a este professor.' });
+    }
+
+    // Cria o vínculo
+    await TeacherStudent.create({
+      teacherId,
+      studentId,
+      teacher_name: teacherCode.teacher.nomeCompleto,
+      student_name: student.nomeCompleto,
+    });
+
+    logger.info(`Aluno ${studentId} vinculado ao professor ${teacherId}`);
+    res.status(201).json({ message: 'Vínculo criado com sucesso!' });
   } catch (error) {
-    console.error(`Erro ao listar alunos: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    logger.error(`Erro ao vincular aluno por código: ${error.message}`);
+    res.status(500).json({ error: 'Erro interno ao vincular aluno.' });
   }
 };
 
-const getStudentRelationsHandler = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    if (!isValidId(studentId, 'studentId')) {
-      return res.status(400).json({ error: 'Invalid studentId' });
+const getStudentsHandler = async (req, res) => {
+    const teacherId = req.userId;
+
+    try {
+        const user = await User.findByPk(teacherId);
+        if (!user || user.userType !== 'professor') {
+            return res.status(403).json({ error: 'Apenas professores podem ver seus alunos.' });
+        }
+
+        const relations = await TeacherStudent.findAll({ 
+            where: { teacherId },
+            include: [{ model: User, as: 'student' }]
+        });
+
+        const students = relations.map(rel => ({
+            id: rel.student.id,
+            nomeCompleto: rel.student.nomeCompleto,
+            email: rel.student.email,
+            userType: rel.student.userType,
+            score: rel.student.score || 0,
+            rank: rel.student.rank || 'Iniciante',
+            cpf: rel.student.cpf,
+            dataNascimento: rel.student.dataNascimento,
+            relationId: rel.id,
+            joined_at: rel.createdAt,
+        }));
+
+        res.status(200).json(students);
+
+    } catch (error) {
+        logger.error(`Erro ao buscar alunos: ${error.message}`, 'RELATIONSHIPS');
+        res.status(500).json({ error: 'Erro ao buscar alunos.' });
     }
-    const userId = req.userId;
-    if (userId !== studentId) { // Removi isStudent, ajuste se precisar
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const relations = await getStudentRelations(studentId);
-    res.status(200).json(relations || []);
-  } catch (error) {
-    logger.error(`Erro ao listar professores: ${error.message}`);
-    res.status(500).json({ error: error.message });
-  }
 };
 
 const unlinkStudent = async (req, res) => {
-  logger.info('🔓 [relationshipController] Iniciando desvinculação', 'RELATIONSHIPS');
-  
-  try {
     const { relationId } = req.params;
-    logger.info(`📊 [relationshipController] relationId: ${relationId}`, 'RELATIONSHIPS');
-    
-    if (!isValidId(relationId, 'relationId')) {
-      logger.warn(`❌ [relationshipController] relationId inválido`, 'RELATIONSHIPS');
-      return res.status(400).json({ error: 'Invalid relationId' });
-    }
     const userId = req.userId;
-    const relation = await TeacherStudent.findById(relationId);
-    if (!relation) {
-      logger.warn(`❌ [relationshipController] Relação não encontrada: ${relationId}`, 'RELATIONSHIPS');
-      return res.status(404).json({ error: 'Relation not found' });
+
+    try {
+        const relation = await TeacherStudent.findByPk(relationId);
+
+        if (!relation) {
+            return res.status(404).json({ error: 'Vínculo não encontrado.' });
+        }
+
+        // Apenas o professor do vínculo ou o próprio aluno podem desfazer
+        if (relation.teacherId !== userId && relation.studentId !== userId) {
+            return res.status(403).json({ error: 'Você não tem permissão para desfazer este vínculo.' });
+        }
+
+        await relation.destroy();
+
+        logger.info(`Vínculo ${relationId} desfeito pelo usuário ${userId}`);
+        res.status(200).json({ message: 'Vínculo desfeito com sucesso.' });
+
+    } catch (error) {
+        logger.error(`Erro ao desvincular aluno: ${error.message}`, 'RELATIONSHIPS');
+        res.status(500).json({ error: 'Erro ao desvincular aluno.' });
     }
-    if (relation.teacher_id.toString() !== userId && relation.student_id.toString() !== userId) {
-      logger.warn(`❌ [relationshipController] Usuário ${userId} sem permissão`, 'RELATIONSHIPS');
-      return res.status(403).json({ error: 'Only participants can unlink' });
-    }
-    await deleteTeacherStudent(relationId);
-    logger.info(`✅ [relationshipController] Relação desvinculada: ${relationId}`, 'RELATIONSHIPS');
-    res.status(200).json({ success: true, message: 'Unlinked successfully' });
-  } catch (error) {
-    logger.error(`Erro ao desvincular`, error, 'RELATIONSHIPS');
-    res.status(500).json({ error: error.message });
-  }
 };
 
 module.exports = {
   generateTeacherCode,
   getTeacherCodeHandler,
   linkStudentByCode,
-  getTeacherStudentsHandler,
-  getStudentRelationsHandler,
+  getStudentsHandler,
   unlinkStudent,
-  getStudentsHandler
 };
