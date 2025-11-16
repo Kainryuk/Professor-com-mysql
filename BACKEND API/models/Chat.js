@@ -1,10 +1,38 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/database');
+const User = require('./User');
 
-const chatSchema = new mongoose.Schema({
-  sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  receiver_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  message: String,
-  created_at: { type: Date, default: Date.now }
+const Chat = sequelize.define('Chat', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  sender_id: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  receiver_id: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  message: {
+    type: DataTypes.TEXT
+  }
+}, {
+  tableName: 'chats',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: false
 });
 
-module.exports = mongoose.model('Chat', chatSchema);
+Chat.belongsTo(User, { as: 'Sender', foreignKey: 'sender_id' });
+Chat.belongsTo(User, { as: 'Receiver', foreignKey: 'receiver_id' });
+
+module.exports = Chat;

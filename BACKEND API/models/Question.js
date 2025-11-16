@@ -1,14 +1,44 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/database');
+const User = require('./User');
 
-const questionSchema = new mongoose.Schema({
-  theme: String,
-  text: String,
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  userName: String,
-  userType: String,
-  visibility: { type: String, enum: ['public', 'private'], default: 'public' },
-  created_at: { type: Date, default: Date.now },
-  updated_at: { type: Date, default: Date.now }
+const Question = sequelize.define('Question', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  theme: {
+    type: DataTypes.STRING
+  },
+  text: {
+    type: DataTypes.TEXT
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  userName: {
+    type: DataTypes.STRING
+  },
+  userType: {
+    type: DataTypes.STRING
+  },
+  visibility: {
+    type: DataTypes.ENUM('public', 'private'),
+    defaultValue: 'public'
+  }
+}, {
+  tableName: 'questions',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
-module.exports = mongoose.model('Question', questionSchema);
+Question.belongsTo(User, { foreignKey: 'userId' });
+User.hasMany(Question, { foreignKey: 'userId' });
+
+module.exports = Question;

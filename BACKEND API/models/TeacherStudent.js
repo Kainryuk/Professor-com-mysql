@@ -1,11 +1,41 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/database');
+const User = require('./User');
 
-const teacherStudentSchema = new mongoose.Schema({
-  teacher_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  student_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  teacher_name: String,
-  student_name: String,
-  joined_at: { type: Date, default: Date.now }
-}, { collection: 'teacher_students' });
+const TeacherStudent = sequelize.define('TeacherStudent', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  teacher_id: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  student_id: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  teacher_name: {
+    type: DataTypes.STRING
+  },
+  student_name: {
+    type: DataTypes.STRING
+  }
+}, {
+  tableName: 'teacher_students',
+  timestamps: true,
+  createdAt: 'joined_at',
+  updatedAt: false
+});
 
-module.exports = mongoose.model('TeacherStudent', teacherStudentSchema);
+TeacherStudent.belongsTo(User, { as: 'Teacher', foreignKey: 'teacher_id' });
+TeacherStudent.belongsTo(User, { as: 'Student', foreignKey: 'student_id' });
+
+module.exports = TeacherStudent;

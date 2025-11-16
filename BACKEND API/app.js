@@ -4,6 +4,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const logger = require('./utils/logger');
+const sequelize = require('./utils/database');
 
 // === Rotas ===
 const authRoutes = require('./routes/authRoutes');
@@ -11,9 +12,6 @@ const questionRoutes = require('./routes/questionRoutes');
 const relationshipRoutes = require('./routes/relationshipRoutes');
 const commentRoutes = require('./routes/commentRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-
-// === Conexão com MongoDB ===
-const { connectDB } = require('./utils/mongo'); // ou './mongo' se estiver na raiz
 
 // Carregar variáveis de ambiente
 dotenv.config({ path: path.resolve(__dirname, '.env') });
@@ -62,7 +60,7 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    db: 'MongoDB'
+    db: 'MySQL'
   });
 });
 
@@ -98,7 +96,7 @@ const PORT = process.env.PORT || 5050;
 
 const startServer = async () => {
   try {
-    await connectDB(); // ← Conecta ao MongoDB antes de subir o servidor
+    await sequelize.sync(); // Sincroniza os modelos com o banco de dados
     app.listen(PORT, () => {
       logger.info(`Servidor rodando na porta ${PORT}`, 'SERVER');
       logger.info(`Health check: http://localhost:${PORT}/api/health`);

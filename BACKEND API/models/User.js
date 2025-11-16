@@ -1,23 +1,56 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../utils/database');
 const bcrypt = require('bcrypt');
 
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  nomeCompleto: String,
-  dataNascimento: String,
-  cpf: String,
-  userType: { type: String, enum: ['aluno', 'professor'], default: 'aluno' },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-
-userSchema.pre('save', async function(next) {
-  if (this.isModified('password')) {
-    this.password = await bcrypt.hash(this.password, 10);
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  nomeCompleto: {
+    type: DataTypes.STRING
+  },
+  dataNascimento: {
+    type: DataTypes.DATEONLY
+  },
+  cpf: {
+    type: DataTypes.STRING,
+    unique: true
+  },
+  userType: {
+    type: DataTypes.ENUM('aluno', 'professor'),
+    defaultValue: 'aluno'
   }
-  this.updatedAt = Date.now();
-  next();
+}, {
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.password) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    }
+  },
+  tableName: 'users',
+  timestamps: true
 });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = User;
