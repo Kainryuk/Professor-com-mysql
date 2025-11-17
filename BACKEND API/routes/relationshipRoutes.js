@@ -5,20 +5,24 @@ const {
     generateTeacherCode,
     getTeacherCodeHandler,
     linkStudentByCode,
-    getTeacherStudentsHandler,
+    getStudentsHandler,
     getStudentRelationsHandler,
-    unlinkStudent,
-    getStudentsHandler
+    unlinkStudent
 } = require('../controllers/relationshipController');
 
-router.use(authMiddleware); // ✅ Aplica a TODAS as rotas
+// Aplica o middleware de autenticação a todas as rotas deste arquivo
+router.use(authMiddleware);
 
-router.post('/teacher-code', generateTeacherCode);
-router.get('/teacher-code/:teacherId', getTeacherCodeHandler);
-router.post('/link-student', linkStudentByCode);
-router.get('/teacher-students/:teacherId', getTeacherStudentsHandler);
-router.get('/teacher-relations/:studentId', getStudentRelationsHandler);
-router.delete('/unlink-student/:relationId', unlinkStudent);
-router.get('/students_data', getStudentsHandler);
+// Rotas para Professores
+router.post('/teacher-code', generateTeacherCode);       // Gera um novo código para o professor logado
+router.get('/teacher-code', getTeacherCodeHandler);         // Obtém o código ativo do professor logado
+router.get('/students', getStudentsHandler);             // Lista os alunos vinculados ao professor logado
+
+// Rotas para Alunos
+router.post('/link-student', linkStudentByCode);           // Aluno se vincula a um professor usando um código
+router.get('/teachers', getStudentRelationsHandler);     // Lista os professores aos quais o aluno está vinculado
+
+// Rotas Comuns
+router.delete('/unlink-student/:relationId', unlinkStudent); // Desfaz um vínculo (professor ou aluno pode fazer)
 
 module.exports = router;

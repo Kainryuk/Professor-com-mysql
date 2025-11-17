@@ -26,7 +26,6 @@ const generateTeacherCode = async (req, res) => {
     const newCode = generateRandomCode();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // Expira em 24 horas
 
-    // Cria ou atualiza o código do professor
     const [teacherCode, created] = await TeacherCode.findOrCreate({
       where: { teacherId },
       defaults: { code: newCode, expiresAt },
@@ -53,7 +52,7 @@ const getTeacherCodeHandler = async (req, res) => {
     const teacherCode = await TeacherCode.findOne({
       where: {
         teacherId,
-        expiresAt: { [Op.gt]: new Date() }, // Apenas códigos válidos
+        expiresAt: { [Op.gt]: new Date() },
       },
     });
 
@@ -96,7 +95,6 @@ const linkStudentByCode = async (req, res) => {
 
     const teacherId = teacherCode.teacherId;
 
-    // Verifica se o vínculo já existe
     const existingLink = await TeacherStudent.findOne({
       where: { teacherId, studentId },
     });
@@ -105,7 +103,6 @@ const linkStudentByCode = async (req, res) => {
       return res.status(409).json({ error: 'Aluno já vinculado a este professor.' });
     }
 
-    // Cria o vínculo
     await TeacherStudent.create({
       teacherId,
       studentId,
@@ -139,11 +136,7 @@ const getStudentsHandler = async (req, res) => {
             id: rel.student.id,
             nomeCompleto: rel.student.nomeCompleto,
             email: rel.student.email,
-            userType: rel.student.userType,
             score: rel.student.score || 0,
-            rank: rel.student.rank || 'Iniciante',
-            cpf: rel.student.cpf,
-            dataNascimento: rel.student.dataNascimento,
             relationId: rel.id,
             joined_at: rel.createdAt,
         }));
@@ -151,8 +144,37 @@ const getStudentsHandler = async (req, res) => {
         res.status(200).json(students);
 
     } catch (error) {
-        logger.error(`Erro ao buscar alunos: ${error.message}`, 'RELATIONSHIPS');
+        logger.error(`Erro ao buscar alunos: ${error.message}`);
         res.status(500).json({ error: 'Erro ao buscar alunos.' });
+    }
+};
+
+const getStudentRelationsHandler = async (req, res) => {
+    const studentId = req.userId;
+
+    try {
+        const user = await User.findByPk(studentId);
+        if (!user || user.userType !== 'aluno') {
+            return res.status(403).json({ error: 'Apenas alunos podem ver seus vínculos.' });
+        }
+
+        const relations = await TeacherStudent.findAll({
+            where: { studentId },
+            include: [{ model: User, as: 'teacher' }]
+        });
+
+        const teachers = relations.map(rel => ({
+            id: rel.teacher.id,
+            nomeCompleto: rel.teacher.nomeCompleto,
+            email: rel.teacher.email,
+            relationId: rel.id,
+            joined_at: rel.createdAt,
+        }));
+
+        res.status(200).json(teachers);
+    } catch (error) {
+        logger.error(`Erro ao buscar vínculos do aluno: ${error.message}`);
+        res.status(500).json({ error: 'Erro ao buscar vínculos.' });
     }
 };
 
@@ -167,7 +189,6 @@ const unlinkStudent = async (req, res) => {
             return res.status(404).json({ error: 'Vínculo não encontrado.' });
         }
 
-        // Apenas o professor do vínculo ou o próprio aluno podem desfazer
         if (relation.teacherId !== userId && relation.studentId !== userId) {
             return res.status(403).json({ error: 'Você não tem permissão para desfazer este vínculo.' });
         }
@@ -178,7 +199,7 @@ const unlinkStudent = async (req, res) => {
         res.status(200).json({ message: 'Vínculo desfeito com sucesso.' });
 
     } catch (error) {
-        logger.error(`Erro ao desvincular aluno: ${error.message}`, 'RELATIONSHIPS');
+        logger.error(`Erro ao desvincular aluno: ${error.message}`);
         res.status(500).json({ error: 'Erro ao desvincular aluno.' });
     }
 };
@@ -188,5 +209,6 @@ module.exports = {
   getTeacherCodeHandler,
   linkStudentByCode,
   getStudentsHandler,
+  getStudentRelationsHandler, // Adicionando a função que faltava
   unlinkStudent,
 };
