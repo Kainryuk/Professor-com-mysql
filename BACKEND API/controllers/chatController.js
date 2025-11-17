@@ -1,79 +1,68 @@
+const { Op } = require('sequelize');
+const ChatMessage = require('../models/ChatMessage');
+const User = require('../models/User');
 const logger = require('../utils/logger');
-const { addChatMessage, getChatMessages } = require('../models/chatModel');
-const { isProfessor } = require('../models/userModel'); // Removi isStudent se não existir, ajuste se precisar
-
-const isValidId = (id, paramName) => {
-  if (!id || id === 'undefined' || typeof id !== 'string' || id.trim().length === 0) {
-    logger.warn(`ID inválido para ${paramName}: ${id}`);
-    return false;
-  }
-  return true;
-};
 
 const addChatMessageHandler = async (req, res) => {
-  logger.info('💬 [chatController] Iniciando envio de mensagem de chat', 'CHAT');
-  
+  const senderId = req.userId; // ID do usuário logado
+  const { receiverId, message } = req.body;
+
+  if (!receiverId || !message) {
+    return res.status(400).json({ error: 'receiverId e message são obrigatórios.' });
+  }
+
   try {
-    const userId = req.userId; // Agora vem do middleware JWT
-    logger.info(`👤 [chatController] Usuário autenticado: ${userId}`, 'CHAT');
-    
-    const { receiverId, message } = req.body;
-    logger.info(`📊 [chatController] Dados: receiverId=${receiverId}, message length=${message?.length}`, 'CHAT');
-    
-    if (!receiverId || !message) {
-      logger.warn('❌ [chatController] Campos obrigatórios faltando', 'CHAT');
-      return res.status(400).json({ error: 'Missing required fields' });
+    const sender = await User.findByPk(senderId);
+    const receiver = await User.findByPk(receiverId);
+
+    if (!sender || !receiver) {
+      return res.status(404).json({ error: 'Remetente ou destinatário não encontrado.' });
     }
-    if (!isValidId(receiverId)) {
-      logger.warn(`❌ [chatController] receiverId inválido: ${receiverId}`, 'CHAT');
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-    const userType = await isProfessor(userId) ? 'professor' : 'aluno'; // Assumindo que você tem isStudent ou ajusta
-    if (!userType) {
-      logger.warn(`❌ [chatController] Usuário ${userId} não é professor nem aluno`, 'CHAT');
-      return res.status(403).json({ error: 'Only teachers and students can send messages' });
-    }
-    const messageData = {
-      sender_id: userId,
-      sender_name: await getUserName(userId), // Assuma que você tem getUserName no userModel
-      sender_type: userType,
+
+    const newMessage = await ChatMessage.create({
+      sender_id: senderId,
       receiver_id: receiverId,
-      message
-    };
-    const messageId = await addChatMessage(messageData);
-    logger.info(`✅ [chatController] Mensagem enviada: ${messageId}`, 'CHAT');
-    res.status(201).json({ message: 'Message sent', id: messageId });
+      sender_name: sender.nomeCompleto,
+      sender_type: sender.userType,
+      message,
+    });
+
+    logger.info(`Mensagem enviada de ${senderId} para ${receiverId}`);
+    res.status(201).json(newMessage);
   } catch (error) {
-    logger.error('Erro ao enviar mensagem de chat', error, 'CHAT');
-    res.status(500).json({ error: 'Internal server error' });
+    logger.error(`Erro ao enviar mensagem: ${error.message}`);
+    res.status(500).json({ error: 'Erro interno ao enviar mensagem.' });
   }
 };
 
 const getChatMessagesHandler = async (req, res) => {
-  logger.info('📨 [chatController] Buscando mensagens de chat', 'CHAT');
-  
+  const userId = req.userId; // ID do usuário logado
+  const { otherUserId } = req.params; // ID do outro participante da conversa
+
+  if (!otherUserId) {
+    return res.status(400).json({ error: 'otherUserId é obrigatório no parâmetro da rota.' });
+  }
+
   try {
-    const { senderId, receiverId } = req.query;
-    logger.info(`📊 [chatController] Params: senderId=${senderId}, receiverId=${receiverId}`, 'CHAT');
-    
-    if (!isValidId(senderId, 'sender_id') || !isValidId(receiverId, 'receiver_id')) {
-      logger.warn(`❌ [chatController] IDs inválidos`, 'CHAT');
-      return res.status(400).json({ error: 'Invalid sender or recipient IDs' });
-    }
-    
-    const userId = req.userId; // Do middleware
-    if (userId !== senderId && userId !== receiverId) {
-      logger.warn(`❌ [chatController] Usuário ${userId} sem permissão`, 'CHAT');
-      return res.status(403).json({ error: 'You can only view your own messages' });
-    }
-    
-    const messages = await getChatMessages(senderId, receiverId);
-    logger.info(`✅ [chatController] ${messages.length} mensagens encontradas`, 'CHAT');
+    const messages = await ChatMessage.findAll({
+      where: {
+        [Op.or]: [
+          { sender_id: userId, receiver_id: otherUserId },
+          { sender_id: otherUserId, receiver_id: userId },
+        ],
+      },
+      order: [['createdAt', 'ASC']],
+      limit: 100, // Limita a quantidade de mensagens para evitar sobrecarga
+    });
+
     res.status(200).json(messages);
   } catch (error) {
-    logger.error(`Erro ao listar mensagens de chat`, error, 'CHAT');
-    res.status(500).json({ error: error.message });
+    logger.error(`Erro ao buscar mensagens: ${error.message}`);
+    res.status(500).json({ error: 'Erro interno ao buscar mensagens.' });
   }
 };
 
-module.exports = { addChatMessageHandler, getChatMessagesHandler };
+module.exports = {
+  addChatMessageHandler,
+  getChatMessagesHandler,
+};
